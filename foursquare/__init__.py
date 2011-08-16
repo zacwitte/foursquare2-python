@@ -13,17 +13,6 @@ Example usage:
 >>> fs.cities()
 {'cities': [{'geolat': 52.378900000000002, 'name': 'Amsterdam', ...}]}
 
-* Basic HTTP auth
-
->>> import foursquare
->>> fs = foursquare.Foursquare(foursquare.BasicCredentials(username, password))
->>> fs.switchcity(23)
-{'data': {'status': '1', 'message': 'City switched successfully'}}
->>> fs.switchcity(34)
-{'data': {'status': '1', 'message': 'City switched successfully'}}
->>> fs.user()
-{'user': {'city': {'geolat': 34.0443, 'name': 'Los Angeles', ...}}}
-
 * OAuth
 
 Without a callback URL:
@@ -46,6 +35,7 @@ import string
 import sys
 import logging
 import base64
+import pprint
 
 import oauth
 
@@ -63,20 +53,29 @@ except ImportError:
 
 
 # General API setup
-API_PROTOCOL = 'http'
+API_PROTOCOL = 'https'
 API_SERVER   = 'api.foursquare.com'
-API_VERSION  = 'v1'
+API_VERSION  = 'v2'
+API_DATE_VERIFIED = "20110808"
 
 OAUTH_SERVER = 'foursquare.com'
 
 
 # Calling templates
+API_BASE=API_PROTOCOL + '://' + API_SERVER + '/' + API_VERSION
 API_URL_TEMPLATE   = string.Template(
-    API_PROTOCOL + '://' + API_SERVER + '/' + API_VERSION + '/${method}.json'
+    API_BASE + '/${method}.json'
+)
+API_URL_TEMPLATE_WITH_ID   = string.Template(
+    API_BASE + '/${method}/${id}.json'
+)
+
+API_URL_TEMPLATE_ASPECT   = string.Template(
+    API_BASE + '/${method}/${id}/${method2}.json'
 )
 
 OAUTH_URL_TEMPLATE = string.Template(
-    API_PROTOCOL + '://' + OAUTH_SERVER + '/oauth/${method}'
+    API_PROTOCOL + '://' + OAUTH_SERVER + '/oauth2/${method}'
 )
 
 
@@ -88,273 +87,298 @@ POST_HEADERS = {
 
 FOURSQUARE_METHODS = {}
 
-def def_method(name, auth_required=False, server=API_SERVER,
+pp = pprint.PrettyPrinter()
+
+def def_method(name, endpoint=None, auth_required=False, server=API_SERVER,
                http_method="GET", optional=[], required=[],
                returns=None, url_template=API_URL_TEMPLATE,
-               namespaced=True):
+               namespaced=True, remap_function=None, remap_method=None):
+    if not endpoint: endpoint = name
     FOURSQUARE_METHODS[name] = {
+        'endpoint': endpoint,
         'server': server,
         'http_method': http_method,
-        'auth_required': auth_required,
         'optional': optional,
         'required': required,
         'returns': returns,
         'url_template': url_template,
-        'namespaced': namespaced
+        'namespaced':namespaced,
+        'remap_function':remap_function,
+        'remap_method':remap_method
         }
-
 
 # --------------------
 # OAuth methods
 # --------------------
 
-def_method('request_token',
-           server=OAUTH_SERVER,
-           returns='oauth_token',
-           optional=['oauth_callback'],
-           url_template=OAUTH_URL_TEMPLATE,
-           namespaced=False)
+def remap_authenticate(kwargs):
+    if not kwargs.get('response_type'):
+        kwargs['response_type'] = 'token'
+    return kwargs
 
-def_method('authorize',
-           server=OAUTH_SERVER,
-           required=['token'],
-           optional=['oauth_callback'],
-           returns='request_url',
-           url_template=OAUTH_URL_TEMPLATE,
-           namespaced=False)
+def_method('authenticate',
+            server=OAUTH_SERVER,
+            required=['redirect_uri', 'response_type', 'client_id', 'client_secret'],
+            returns='request_url',
+            remap_function=remap_authenticate,
+            url_template=OAUTH_URL_TEMPLATE)
+
+def remap_access_token(kwargs):
+    if not kwargs.get('grant_type'):
+        kwargs['grant_type'] = 'authorization_code'
+    return kwargs
 
 def_method('access_token',
            server=OAUTH_SERVER,
-           required=['token', 'oauth_verifier'],
+           required=['code', 'client_id', 'client_secret', 'redirect_uri'],
+           optional=['grant_type'],
            returns='oauth_token',
+           remap_function=remap_access_token,
            url_template=OAUTH_URL_TEMPLATE,
            namespaced=False)
-
-
-# --------------------
-# Geo methods
-# --------------------
-
-def_method('cities')
-
-def_method('checkcity',
-           required=['geolat', 'geolong'])
-
-def_method('switchcity',
-           auth_required=True,
-           http_method='POST',
-           required=['cityid'])
-
-
-# --------------------
-# Check in methods
-# --------------------
-
-def_method('checkins',
-           auth_required=True,
-           optional=['cityid'])
-
-def_method('checkin',
-           auth_required=True,
-           http_method='POST',
-           optional=['vid', 'venue', 'shout', 'private',
-                     'twitter', 'facebook', 'geolat', 'geolong'])
-
-def_method('history',
-           auth_required=True,
-           optional=['l', 'sinceid'])
 
 
 # --------------------
 # User methods
 # --------------------
 
-def_method('user',
-           auth_required=True,
-           optional=['uid', 'badges', 'mayor'])
+def_method('users',
+            required=['id', 'oauth_token'],
+            url_template=API_URL_TEMPLATE_WITH_ID)
 
-def_method('friends',
-           auth_required=True,
-           optional=['uid'])
 
+def_method('users_leaderboard',
+            required=['oauth_token'],
+            optional=['neighbors'])
+
+def_method('users_search',
+            required=['oauth_token'],
+            optional=['phone', 'email', 'twitter', 'twitterSource', 'fbid', 'name'])
+
+
+def_method('users_requests',
+            required=['oauth_token'])
+
+def_method('users_badges',
+            required=['oauth_token', 'id'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_checkins',
+            required=['oauth_token', 'id'],
+            optional=['limit', 'offset', 'afterTimestamp', 'beforeTimestamp'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_friends',
+            required=['oauth_token', 'id'],
+            optional=['limit', 'offset'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_mayorships',
+            required=['oauth_token', 'id'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_tips',
+            required=['oauth_token', 'id'],
+            optional=['sort', 'll', 'limit', 'offset'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_todos',
+            required=['oauth_token', 'id'],
+            optional=['sort', 'll'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_venuehistory',
+            required=['oauth_token', 'id'],
+            optional=['beforeTimestamp', 'afterTimestamp', 'categoryId'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_request',
+            http_method='POST',
+            required=['oauth_token', 'id'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_unfriend',
+            http_method='POST',
+            required=['oauth_token', 'id'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_approve',
+            http_method='POST',
+            required=['oauth_token', 'id'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_deny',
+            http_method='POST',
+            required=['oauth_token', 'id'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_setpings',
+            http_method='POST',
+            required=['oauth_token', 'value'],
+            url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('users_update',
+            http_method='POST',
+            required=['oauth_token', 'photo'],
+            url_template=API_URL_TEMPLATE_ASPECT)
 
 # --------------------
 # Venue methods
 # --------------------
 
+
 def_method('venues',
-           required=['geolat', 'geolong'],
-           optional=['l', 'q'])
+           required=['id'],
+           url_template=API_URL_TEMPLATE_WITH_ID)
 
-def_method('venue',
-           required=['vid'])
-
-def_method('addvenue',
-           auth_required=True,
+def_method('venues_add',
            http_method='POST',
-           required=['name', 'address', 'crossstreet',
-                     'city', 'state', 'cityid'],
-           optional=['zip', 'phone', 'geolat', 'geolong'])
+           required=['oauth_token', 'name', 'll'],
+           optional=['address', 'crossStreet', 'city', 'state', 'zip', 'phone', 'twitter', 'primaryCategoryId'])
 
-def_method('venue_proposeedit',
-           auth_required=True,
-           http_method='POST',
-           # Documentation does not specify if crosstreet is required
-           # or optional.
-           required=['vid', 'name', 'address', 'crossstreet', 'city',
-                     'state', 'geolat', 'geolong'],
-           optional=['zip', 'phone'])
+def_method('venues_categories')
 
-def_method('venue_flagclosed',
-           auth_required=True,
-           http_method='POST',
-           required=['vid'])
+def_method('venues_explore',
+           required=['ll'],
+           optional=['llAcc', 'alt', 'altAcc', 'radius', 'section', 'query', 'limit', 'intent'])
 
+def_method('venues_search',
+            required=['ll'],
+            optional=['llAcc','alt','altAcc','query','limit','intent','categoryId','url','providerId','linkedId'])
+
+def_method('venues_trending',
+           required=['ll'],
+           optional=['limit', 'radius'])
+
+def_method('venues_herenow',
+           required=['id'],
+           optional=['limit', 'offset', 'afterTimestamp'],
+           url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('venues_tips',
+           required=['id'],
+           optional=['sort', 'limit', 'offset'],
+           url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('venues_photos',
+           required=['id', 'group'],
+           optional=['limit', 'offset'],
+           url_template=API_URL_TEMPLATE_ASPECT)
+
+def_method('venues_links',
+           required=['id'],
+           url_template=API_URL_TEMPLATE_ASPECT)
 
 # --------------------
-# Tip methods
+# Check in methods
+# --------------------
+
+
+def_method('checkins',
+           required=['oauth_token', 'id'],
+           optional=['signature'],
+           url_template=API_URL_TEMPLATE_WITH_ID)
+
+def_method('checkins_add',
+           http_method='POST',
+           required=['oauth_token'],
+           optional=['venueId', 'venue', 'shout', 'broadcast', 'll', 'llAcc', 'alt', 'altAcc'])
+
+def_method('checkins_recent',
+           required=['oauth_token'],
+           optional=['ll', 'limit', 'afterTimestamp'])
+
+def_method('checkins_addcomment',
+           http_method='POST',
+           url_template=API_URL_TEMPLATE_ASPECT,
+           required=['oauth_token', 'id'],
+           optional=['text'])
+
+def_method('checkins_deletecomment',
+           http_method='POST',
+           url_template=API_URL_TEMPLATE_ASPECT,
+           required=['id'],
+           optional=['commentId'])
+
+# --------------------
+# Tips methods
 # --------------------
 
 def_method('tips',
-           required=['geolat', 'geolong'],
-           optional=['l'])
+           url_template=API_URL_TEMPLATE_WITH_ID,
+           required=['id'])
 
-def_method('addtip',
-           auth_required=True,
+def_method('tips_add',
            http_method='POST',
-           required=['vid', 'text'],
-           optional=['type', 'geolat', 'geolong'])
+           required=['oauth_token', 'venueId', 'text'],
+           optional=['url', 'broadcast'])
 
-def_method('tip_marktodo',
-           auth_required=True,
-           http_method='POST',
-           required=['tid'])
+def_method('tips_search',
+           required=['ll'],
+           optional=['limit', 'offset', 'filter', 'query'])
 
-def_method('tip_markdone',
-           auth_required=True,
+def_method('tips_marktodo',
            http_method='POST',
-           required=['tid'])
+           url_template=API_URL_TEMPLATE_ASPECT,
+           required=['oauth_token','id'])
+
+def_method('tips_markdone',
+           http_method='POST',
+           required=['oauth_token', 'id'])
+
+def_method('unmark',
+           http_method='POST',
+           required=['oauth_token', 'id'])
 
 # --------------------
-# Settings methods
+# Photos
 # --------------------
 
-def_method('setpings',
-           auth_required=True,
+def_method('photos',
+           url_template=API_URL_TEMPLATE_WITH_ID,
+           required=['oauth_token', 'id'])
+
+def_method('photos_add',
            http_method='POST',
-           required=['self', 'uid'])
+           required=['oauth_token'],
+           optional=['checkinId', 'tipId', 'venueId', 'broadcast', 'public', 'll', 'llAcc', 'alt', 'altAcc', 'photo'])
 
 # --------------------
-# Friend methods
+# Settings
 # --------------------
 
-def_method('friend_requests',
-           auth_required=True)
+def_method('settings',
+           url_template=API_URL_TEMPLATE_WITH_ID,
+           required=['oauth_token', 'id'])
 
-def_method('friend_approve',
-           auth_required=True,
+def_method('settings_set',
            http_method='POST',
-           required=['uid'])
-
-def_method('friend_deny',
-           auth_required=True,
-           http_method='POST',
-           required=['uid'])
-
-def_method('friend_sendrequest',
-           auth_required=True,
-           http_method='POST',
-           required=['uid'])
-
-def_method('findfriends_byname',
-           auth_required=True,
-           required=['q'])
-
-def_method('findfriends_byphone',
-           auth_required=True,
-           required=['q'])
-
-def_method('findfriends_bytwitter',
-           auth_required=True,
-           optional=['q'])
-
+           url_template=API_URL_TEMPLATE_ASPECT,
+           required=['oauth_token', 'id', 'value'],
+           optional=['message'])
 
 # --------------------
-# Other methods
+# Specials
 # --------------------
 
-def_method('test')
+def_method('specials',
+           url_template=API_URL_TEMPLATE_WITH_ID,
+           required=['oauth_template', 'id', 'venueId'])
+
+def_method('specials_search',
+           optional=['ll', 'llAcc', 'alt', 'altAcc', 'limit'])
+
+def_method('specials_flag',
+           http_method='POST',
+           url_template=API_URL_TEMPLATE_WITH_ID,
+           required=['oauth_token', 'id', 'venueId', 'problem'],
+           optional=['text'])
 
 
-class Credentials:
-    pass
 
-class OAuthCredentials(Credentials):
-    def __init__(self, consumer_key, consumer_secret):
-        self.consumer_key = consumer_key
-        self.consumer_secret = consumer_secret
-        self.oauth_consumer = oauth.OAuthConsumer(consumer_key, consumer_secret)
-        self.signature_method = oauth.OAuthSignatureMethod_HMAC_SHA1()
-        self.access_token = None
-        
-    def build_request(self, http_method, url, parameters, token=None):
-        if token == None:
-            token = self.access_token
-        request = oauth.OAuthRequest.from_consumer_and_token(
-            self.oauth_consumer,
-            token=token,
-            http_method=http_method,
-            http_url=url,
-            parameters=parameters)
-        request.sign_request(self.signature_method, self.oauth_consumer, token)
-        if http_method == 'GET':
-            return request.to_url(), request.to_postdata(), {}
-        else:
-            return url, request.to_postdata(), {}
-
-    def set_access_token(self, token):
-        self.access_token = token
-
-    def get_access_token(self):
-        return self.access_token
-
-    def authorized(self):
-        return self.access_token != None
-    
-        
-class BasicCredentials(Credentials):
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-
-    def build_request(self, http_method, url, parameters, token=None):
-        # Need to strip the newline off.
-        auth_string = base64.encodestring('%s:%s' % (self.username, self.password))[:-1]
-        query = urllib.urlencode(parameters)
-        if http_method == 'POST':
-            args = query
-        else:
-            args = None
-        return url+ '?' + query, args, {'Authorization': 'Basic %s' % (auth_string,)}
-
-    def authorized(self):
-        return True
-
-class NullCredentials(Credentials):
-    def __init__(self):
-        pass
-    def authorized(self):
-        return False
-    def build_request(self, http_method, url, parameters, token=None):
-        query = urllib.urlencode(parameters)
-        if http_method == 'POST':
-            args = query
-        else:
-            args = None
-        return url + '?' + query, args, {}
+#TODO: multi-query
 
 
-    
 class FoursquareException(Exception):
     pass
 
@@ -385,21 +409,28 @@ class FoursquareAccumulator:
     
 
 class Foursquare:
-    def __init__(self, credentials=None):
+    token=None
+    
+    def __init__(self, consumer_key, consumer_secret, callback_uri=None, access_token=None):
         # Prepare object lifetime variables
-        if credentials:
-            self.credentials = credentials
-        else:
-            self.credentials = NullCredentials()
+        self.client_id=consumer_key
+        self.client_secret=consumer_secret
+        self.redirect_uri=callback_uri
+        self.token=access_token
 
         # Prepare the accumulators for each method
         for method in FOURSQUARE_METHODS:
             if not hasattr(self, method):
                 setattr(self, method, FoursquareAccumulator(self, method))
 
+    def set_access_token(self, access_token):
+        self.token = access_token
 
     def get_http_connection(self, server):
-        return httplib.HTTPConnection(server)
+        if API_PROTOCOL=='https':
+            return httplib.HTTPSConnection(server)
+        else:
+            return httplib.HTTPConnection(server)
         
     
     def fetch_response(self, server, http_method, url, body=None, headers=None):
@@ -428,28 +459,51 @@ class Foursquare:
 
     def call_method(self, method, *args, **kw):
         logging.debug('Calling foursquare method %s %s %s' % (method, args, kw))
-        logging.debug('Credentials: %s' % (self.credentials,))
         
         # Theoretically, we might want to do 'does this method exits?'
         # checks here, but as all the aggregators are being built in
         # __init__(), we actually don't need to: Python handles it for
         # us.
         meta = FOURSQUARE_METHODS[method]
-
-        if meta['auth_required'] and (not self.credentials or not self.credentials.authorized()):
-            raise FoursquareException('Remote method %s requires authorization.' % (`method`,))
         
         if args:
             # Positional arguments are mapped to meta['required'] and
             # meta['optional'] in order of specification of those
             # (with required first, obviously)
             names = meta['required'] + meta['optional']
+            if len(args) > len(names):
+                raise FoursquareException('Too many arguments supplied to method %s; ' % (method) + \
+                                          'required arguments are %s., optional arguments are %s.' % \
+                                          (', '.join(meta['required']),
+                                           ', '.join(meta['optional'])))
             for i in xrange(len(args)):
-                kw[names[i]] = args[i]
-        
+                if not kw.get(names[i]):
+                    kw[names[i]] = args[i]
+
+        return self.do_method(method, kw)
+
+    def do_method(self, method, kw):
+        meta = FOURSQUARE_METHODS[method]
+
+        if meta['remap_function']:
+            remap_function = meta['remap_function']
+            new_kw = remap_function(kw)
+        else:
+            new_kw=kw
+
+        if meta['remap_method']:
+            return self.do_method(meta['remap_method'], new_kw)
+
+        #see if we have the arg stored as a member variable
+        for arg in (set(meta['required']) | set(meta['optional'])):
+            if not arg in kw and arg=='oauth_token' and self.token and len(self.token)>0:
+                kw['oauth_token'] = self.token
+            elif not arg in kw and getattr(self, arg, None):
+                kw[arg] = getattr(self, arg)
+
         # Check we have all required arguments
         if len(set(meta['required']) - set(kw.keys())) > 0:
-            raise FoursquareException('Too few arguments were supplied for the method %s; required arguments are %s.' % (method, ', '.join(meta['required'])))
+            raise FoursquareException('Too few arguments were supplied for the method %s; required arguments are %s and got just %s.' % (method, ', '.join(meta['required']), str(kw)))
 
         # Check that we don't have extra arguments.
         for arg in kw:
@@ -459,57 +513,62 @@ class Foursquare:
                                           'required arguments are %s., optional arguments are %s.' % \
                                           (', '.join(meta['required']),
                                            ', '.join(meta['optional'])))
-        
-        # Token shouldn't be handled as a normal arg, so strip it out
-        # (but make sure we have it, even if it's None)
-        if 'token' in kw:
-            token = kw['token']
-            del kw['token']
-        else:
-            token = None
 
         # Build the request.
         if meta['namespaced']:
-            cred_url, cred_args, cred_headers = self.credentials.build_request(
-                meta['http_method'],
-                meta['url_template'].substitute(method=method.replace('_', '/')),
-                kw,
-                token=token)
+            new_method=method.replace('_', '/')
         else:
-            cred_url, cred_args, cred_headers = self.credentials.build_request(
-                meta['http_method'],
-                meta['url_template'].substitute(method=method),
-                kw,
-                token=token)
-            
+            new_method=method
 
-        # If the return type is the request_url, simply build the URL and 
-        # return it witout executing anything    
+        if meta['url_template'] == API_URL_TEMPLATE_WITH_ID:
+            url = meta['url_template'].substitute(method=new_method, id=kw['id'])
+            del kw['id']
+        elif meta['url_template'] == API_URL_TEMPLATE_ASPECT:
+            method_parts = new_method.split('/')
+            url = meta['url_template'].substitute(method=method_parts[0], method2=method_parts[1], id=kw['id'])
+            del kw['id']
+        else:
+            url = meta['url_template'].substitute(method=new_method)
+
+        kw['v']=API_DATE_VERIFIED
+
+        if 'access_token' not in kw:
+            if 'client_id' not in kw:
+                kw['client_id'] = self.client_id
+            if 'client_secret' not in kw:
+                kw['client_secret'] = self.client_secret
+
+        # If the return type is the request_url, simply build the URL and
+        # return it witout executing anything
         if 'returns' in meta and meta['returns'] == 'request_url':
-            return cred_url
-        
+            url += "?"+urllib.urlencode(kw)
+            return url
+
         server = API_SERVER
         if 'server' in meta:
             server = meta['server']
-            
+
         if meta['http_method'] == 'POST':
-            response = self.fetch_response(server, meta['http_method'],
-                                           cred_url,
-                                           body=cred_args,
-                                           headers=cred_headers)
+            logging.info("Getting url "+url+" with body "+str(kw))
+            response = self.fetch_response(server, meta['http_method'], url, body=kw)
         else:
-            response = self.fetch_response(server, meta['http_method'],
-                                           cred_url,
-                                           headers=cred_headers)
-        
+            url += "?"+urllib.urlencode(kw)
+            logging.info("Getting url "+url)
+            response = self.fetch_response(server, meta['http_method'], url)
+
+        if method=='access_token':
+            results = simplejson.loads(response)
+            self.token=results['access_token']
+
         # Method returns nothing, but finished fine
         # Return the oauth token
         if 'returns' in meta and meta['returns'] == 'oauth_token':
-            return oauth.OAuthToken.from_string(response)
-        
+            return self.token
+
         results = simplejson.loads(response)
         return results
-    
+
+            
 
 # TODO: Cached version
 
