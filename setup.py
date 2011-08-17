@@ -8,14 +8,11 @@ except ImportError:
         from setuptools import setup, find_packages
 setup(
     name='Foursquare',
-    description='Python module to interface with the foursquare API',
-    version='0.1',
-    author='John Wiseman',
-    author_email='jjwiseman@gmail.com',
-    url='http://github.com/wiseman/foursquare-python',
+    description='Python module to interface with the foursquare API v2',
+    version='0.2',
+    author='Zac Witte',
+    author_email='zacwitte@gmail.com',
+    url='https://github.com/zacwitte/foursquare2-python',
     packages=find_packages(exclude=('ez_setup', 'tests',)),
-    license=open('LICENSE.txt').read(),
-    setup_requires=(
-        'oauth',
-    )
+    license=open('LICENSE.txt').read()
 )
