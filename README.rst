@@ -1,17 +1,17 @@
-| Copyright 2009 `John Wiseman`_
+| Copyright 2011 `Zac Witte`_
 | Covered by the MIT License, see `LICENSE.txt`_.
+| Ported from the foursquare-python module by `John Wiseman`_
 
 foursquare
 ==========
 
 This Python module lets you access the `foursquare API`_.  It supports
-unauthenticated access, `basic HTTP authentication`_, and `OAuth`_
+unauthenticated access (with API key) and `OAuth`_
 authorization.  This code is based on a `similar module for Fire
 Eagle`_ made by Steve Marshall.
 
-It supports all the v1 foursquare API methods as of 2009-12-17.
-
-This module requires Leah Culver's oauth module, `oauth.py`_.
+It supports all the v2 foursquare API methods as of 2011-08-16, although
+any POST actions are untested and may need further development.
 
 Foursquare API method names are the same in Python, except for methods
 like ``friend/requests``, which are translated to names like
@@ -29,79 +29,34 @@ Examples
 No authentication::
 
  >>> import foursquare
- >>> fs = foursquare.Foursquare()
- >>> fs.cities()
- {'cities': [{'geolat': 52.378900000000002, 'name': 'Amsterdam', ...}]}
+ >>> fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY, consumer_secret=FOURSQUARE_CONSUMER_SECRET)
+ >>> fs.venues_search(ll="37.77493,-122.419416")
+ {u'meta': {u'code': 200}, u'response': {u'venues': [{u'verified': False, u'name': u'Dolphin Swimming and Rowing Club', u'hereNow': {u'count': 0}, u'contact': {}, u'location': {u'city': u'San Francisco', u'distance': 0, u'state': u'CA', u'address': u'Acquatic Park', u'lat': 37.7749295, u'lng': -122.4194155}, u'stats': {u'checkinsCount': 17, u'usersCount': 11}, u'id': u'4c13fd9077cea59376e0cf60', u'categories': []}, ... ]}}
 
-Basic HTTP authentication::
-
- >>> import foursquare
- >>> fs = foursquare.Foursquare(foursquare.BasicCredentials(username, password))
- >>> fs.switchcity(23)
- {'data': {'status': '1', 'message': 'City switched successfully'}}
- >>> fs.switchcity(34)
- {'data': {'status': '1', 'message': 'City switched successfully'}}
- >>> fs.user()
- {'user': {'city': {'geolat': 34.0443, 'name': 'Los Angeles', ...}}}
-
-OAuth::
-
-When foursquare added support for the ``oauth_callback`` parameter to
-specify a callback URL, they made ``oauth_verifier`` argument a
-required argument to the ``access_token`` method.  The
-``oauth_verifier`` that you need to pass to ``access_token`` comes
-from the URL that foursquare redirects the user to after
-authorization::
+OAuth2 Authentication::
 
  >>> import foursquare
- >>> credentials = foursquare.OAuthCredentials(oauth_key, oauth_secret)
- >>> fs = foursquare.Foursquare(credentials)
- >>> app_token = fs.request_token(oauth_callback='http://myapp.example/')
- >>> auth_url = fs.authorize(app_token)
-
+ >>> fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY, consumer_secret=FOURSQUARE_CONSUMER_SECRET, callback_uri=FOURSQUARE_OAUTH_CALLBACK)
+ >>> auth_url = fs.authenticate()
+ >>> access_token = raw_input('\nPlease go the following URL and authorize your app:\n\n%s\n\nEnter the access_token in the url it redirects you to and press enter: ' % (auth_url,))
+ 
  # Go to auth_url and authorize.  Once you've authorized, foursquare
  # will redirect you to a URL that looks like this:
  #
- #   http://myapp.example/?oauth_verifier=1234&oauth_token=abc9
+ #   http://myapp.example/#access_token=23r243c334c3434c
  #
- # Take the oauth_verifier parameter value and pass it to
- # access_token.
-
- >>> oauth_verifier = '1234'
- >>> user_token = fs.access_token(app_token, oauth_verifier)
- >>> credentials.set_access_token(user_token)
- >>> fs.user()
- {'user': {'city': {'geolat': 34.0443, 'name': 'Los Angeles', ...}}}
-
-The above is the most correct method according to the `OAuth 1.0A
-spec`_.  But foursquare supports a less stringent mode if you don't
-pass a ``oauth_callback`` argument, in which case you don't need to
-pass an ``oauth_verifier`` to ``access_token``::
-
- >>> import foursquare
- >>> credentials = foursquare.OAuthCredentials(oauth_key, oauth_secret)
- >>> fs = foursquare.Foursquare(credentials)
- >>> app_token = fs.request_token(oauth_callback='http://myapp.example/')
- >>> auth_url = fs.authorize(app_token)
-
- # Go to auth_url and authorize.  Once you've authorized, foursquare
- # will redirect you to your app's registered callback URL.  You don't
- # need that URL; we're going to call the access_token method
- # directly.
- #
- # Note that we're passing an empty string for the oauth_verifier.
-
- >>> user_token = fs.access_token(app_token, '')
- >>> credentials.set_access_token(user_token)
- >>> fs.user()
- {'user': {'city': {'geolat': 34.0443, 'name': 'Los Angeles', ...}}}
+ # Pass the access_token parameter value to access_token.
+ 
+ >>> fs.set_access_token(access_token)
+ >>> fs.users(id='self')
+ {u'notifications': [{u'item': {u'unreadCount': 0}, u'type': u'notificationTray'}], u'meta': {u'code': 200}, u'response': {u'user': {u'checkins': {u'count': 583, ...}}}}
 
 
-.. _foursquare API: http://groups.google.com/group/foursquare-api
+
+.. _foursquare API: http://developer.foursquare.com/
 .. _similar module for Fire Eagle: http://github.com/SteveMarshall/fire-eagle-python-binding/
-.. _basic HTTP authentication: http://en.wikipedia.org/wiki/Basic_access_authentication
-.. _OAuth: http://groups.google.com/group/foursquare-api/web/oauth
+.. _OAuth: http://developer.foursquare.com/docs/oauth.html
 .. _John Wiseman: http://twitter.com/lemonodor
-.. _LICENSE.txt: http://github.com/wiseman/foursquare-python/blob/master/LICENSE.txt
-.. _oauth.py: http://oauth.googlecode.com/svn/code/python/oauth/
-.. _OAuth 1.0A spec: http://oauth.net/core/1.0a/
+.. _Zac Witte: http://twitter.com/zacwitte
+.. _LICENSE.txt: http://github.com/zacwitte/foursquare2-python/blob/master/LICENSE.txt
+.. _foursquare-python: http://github.com/wiseman/foursquare-python

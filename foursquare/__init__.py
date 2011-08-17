@@ -1,43 +1,34 @@
 """
-Foursquare API Python module
-by John Wiseman <jjwiseman@gmail.com>
+Foursquare API v2 Python module
+by Zac Witte <zacwitte@gmail.com>
 
-Based on a Fire Eagle module by Steve Marshall <steve@nascentguruism.com>.
+
+Ported from foursquare-python module by John Wiseman <jjwiseman@gmail.com>,
 
 Example usage:
 
 * No authentication
 
 >>> import foursquare
->>> fs = foursquare.Foursquare()
->>> fs.cities()
-{'cities': [{'geolat': 52.378900000000002, 'name': 'Amsterdam', ...}]}
+>>> fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY, consumer_secret=FOURSQUARE_CONSUMER_SECRET)
+>>> fs.venues_search(ll="37.77493,-122.419416")
+{u'meta': {u'code': 200}, u'response': {u'venues': [{u'verified': False, u'name': u'Dolphin Swimming and Rowing Club', u'hereNow': {u'count': 0}, u'contact': {}, u'location': {u'city': u'San Francisco', u'distance': 0, u'state': u'CA', u'address': u'Acquatic Park', u'lat': 37.7749295, u'lng': -122.4194155}, u'stats': {u'checkinsCount': 17, u'usersCount': 11}, u'id': u'4c13fd9077cea59376e0cf60', u'categories': []}, ... ]}}
 
-* OAuth
-
-Without a callback URL:
+* OAuth2 Authentication
 
 >>> import foursquare
->>> credentials = foursquare.OAuthCredentials(oauth_key, oauth_secret)
->>> fs = foursquare.Foursquare(credentials)
->>> app_token = fs.request_token()
->>> auth_url = fs.authorize(app_token)
->>> print "Go to %s and authorize, then continue." % (auth_url,)
->>> user_token = fs.access_token(app_token, oauth_verifier)
->>> credentials.set_access_token(user_token)
->>> fs.user()
-{'user': {'city': {'geolat': 34.0443, 'name': 'Los Angeles', ...}}}
+>>> fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY, consumer_secret=FOURSQUARE_CONSUMER_SECRET, callback_uri=FOURSQUARE_OAUTH_CALLBACK)
+>>> auth_url = fs.authenticate()
+>>> access_token = raw_input('\nPlease go the following URL and authorize your app:\n\n%s\n\nEnter the access_token in the url it redirects you to and press enter: ' % (auth_url,))
+>>> fs.set_access_token(access_token)
+>>> fs.users(id='self')
+{u'notifications': [{u'item': {u'unreadCount': 0}, u'type': u'notificationTray'}], u'meta': {u'code': 200}, u'response': {u'user': {u'checkins': {u'count': 583, ...}}}}
 """
 
 import httplib
 import urllib
 import string
-import sys
 import logging
-import base64
-import pprint
-
-import oauth
 
 try:
     # Python 2.6?
@@ -87,9 +78,7 @@ POST_HEADERS = {
 
 FOURSQUARE_METHODS = {}
 
-pp = pprint.PrettyPrinter()
-
-def def_method(name, endpoint=None, auth_required=False, server=API_SERVER,
+def def_method(name, endpoint=None, server=API_SERVER,
                http_method="GET", optional=[], required=[],
                returns=None, url_template=API_URL_TEMPLATE,
                namespaced=True, remap_function=None, remap_method=None):
