@@ -179,6 +179,49 @@ class TestFoursquare(unittest.TestCase):
         categories = fs.venues_categories()
         self.assertTrue(len(categories['response']['categories']) >= 0)
 
+    def test_checkin_history(self):
+        fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY,
+                                   consumer_secret=FOURSQUARE_CONSUMER_SECRET)
+        fs.set_access_token(FOURSQUARE_ACCESS_TOKEN)
+        checkins = fs.users_checkins(id='self')
+        self.assertIn('checkins', checkins['response'])
+        self.assertIn('items', checkins['response']['checkins'])
+        self.assertIn('count', checkins['response']['checkins'])
+        self.assertGreaterEqual(len(checkins['response']['checkins']['items']), 0)
+        self.assertGreaterEqual(checkins['response']['checkins']['count'],
+                                len(checkins['response']['checkins']['items']))
+
+    def test_checkin_all_history(self):
+        fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY,
+                                   consumer_secret=FOURSQUARE_CONSUMER_SECRET)
+        fs.set_access_token(FOURSQUARE_ACCESS_TOKEN)
+        checkins = fs.users_checkins(id='self')
+        self.assertIn('checkins', checkins['response'])
+        self.assertIn('count', checkins['response']['checkins'])
+        checkin_count = checkins['response']['checkins']['count']
+        
+        checkin_history = foursquare.all_history(fs, batchsize=250)
+
+        self.assertEqual(len(checkin_history), checkin_count)
+
+    def test_checkin_all_history_after_timestamp(self):
+        fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY,
+                                   consumer_secret=FOURSQUARE_CONSUMER_SECRET)
+        fs.set_access_token(FOURSQUARE_ACCESS_TOKEN)
+        checkins = fs.users_checkins(id='self')
+        self.assertIn('checkins', checkins['response'])
+        self.assertIn('count', checkins['response']['checkins'])
+        checkin_count = checkins['response']['checkins']['count']
+
+        if checkin_count==0:
+            return
+
+        afterTimestamp = checkins['response']['checkins']['items'][0]['createdAt']
+        
+        checkin_history = foursquare.all_history(fs, batchsize=250, afterTimestamp=afterTimestamp)
+
+        self.assertEqual(len(checkin_history), 1)
+
 def find_if(objs, pred):
     for o in objs:
         if pred(o):

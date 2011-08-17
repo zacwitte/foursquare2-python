@@ -29,6 +29,7 @@ import httplib
 import urllib
 import string
 import logging
+import pprint
 
 try:
     # Python 2.6?
@@ -51,6 +52,7 @@ API_DATE_VERIFIED = "20110808"
 
 OAUTH_SERVER = 'foursquare.com'
 
+pp = pprint.PrettyPrinter()
 
 # Calling templates
 API_BASE=API_PROTOCOL + '://' + API_SERVER + '/' + API_VERSION
@@ -575,7 +577,7 @@ def merge_dicts(a, b):
     return r
 
 
-def history_generator(fs, batchsize=250, sinceid=0):
+def history_generator(fs, batchsize=250, afterTimestamp=0):
     """A lower-level function for retrieving a user's entire checkin
     history.  Given a Foursquare API object, this function will call
     the object's history method as many times as required to retrieve
@@ -591,36 +593,33 @@ def history_generator(fs, batchsize=250, sinceid=0):
     user's history has been retrieved.
     """
     done = False
+    offset=0
     while not done:
         # Get a batch of checkins and yield it.
-        h = fs.history(sinceid=sinceid, l=batchsize)
-        if h['checkins']:
-            h['checkins'] = sorted(h['checkins'], key=lambda c: c['id'])
-        yield h
-
-        # Annoying that Foursquare uses null/None to indicate zero
-        # checkins.
-        if not h['checkins'] or len(h['checkins']) != batchsize:
-            done = True
+        if offset:
+            h = fs.users_checkins(id='self', afterTimestamp=afterTimestamp, offset=offset, limit=batchsize)
         else:
-            # Find the most recent checkin ID.
-            sinceid = h['checkins'][-1]['id']
+            h = fs.users_checkins(id='self', afterTimestamp=afterTimestamp, limit=batchsize)
+        
+        yield h['response']['checkins']['items']
+
+        if len(h['response']['checkins']['items']) != batchsize:
+            done = True
+
+        offset += batchsize
 
 
-def all_history(fs, batchsize=250, sinceid=0):
+def all_history(fs, batchsize=250, afterTimestamp=0):
     """Returns a tuple containing a user's entire checkin history.
     Note that the result is a tuple, not a dictionary with a single
     key/value containing the list of checkins like the
     Foursquare.history method returns.
 
     The batchsize argument, which defaults to 250, is the number of
-    checkins to attempt to fetch each time.  The sinceid argument,
+    checkins to attempt to fetch each time.  The afterTimestamp argument,
     which defaults to 0, is the lower bound on desired checkins.
     """
     history = []
-    for h in history_generator(fs, batchsize=batchsize, sinceid=sinceid):
-        # Annoying that Foursquare uses null/None to indicate zero
-        # checkins.
-        if h['checkins']:
-            history += h['checkins']
+    for items in history_generator(fs, batchsize=batchsize, afterTimestamp=afterTimestamp):
+        history += items
     return history
