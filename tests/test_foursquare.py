@@ -222,6 +222,19 @@ class TestFoursquare(unittest.TestCase):
 
         self.assertEqual(len(checkin_history), 1)
 
+    def test_all_friends(self):
+        fs = foursquare.Foursquare(consumer_key=FOURSQUARE_CONSUMER_KEY,
+                                   consumer_secret=FOURSQUARE_CONSUMER_SECRET)
+        fs.set_access_token(FOURSQUARE_ACCESS_TOKEN)
+        friends = fs.users_friends(id='self')
+        self.assertIn('friends', friends['response'])
+        self.assertIn('count', friends['response']['friends'])
+        friend_count = friends['response']['friends']['count']
+
+        all_friends = foursquare.all_friends(fs)
+
+        self.assertEqual(len(all_friends), friend_count)
+
 def find_if(objs, pred):
     for o in objs:
         if pred(o):

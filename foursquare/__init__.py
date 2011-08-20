@@ -623,3 +623,23 @@ def all_history(fs, batchsize=250, afterTimestamp=0):
     for items in history_generator(fs, batchsize=batchsize, afterTimestamp=afterTimestamp):
         history += items
     return history
+
+def friend_list_generator(fs, batchsize=500):
+    done = False
+    offset=0
+    while not done:
+        # Get a batch of frinds and yield it.
+        h = fs.users_friends(id='self', limit=batchsize, offset=offset)
+
+        yield h['response']['friends']['items']
+
+        if len(h['response']['friends']['items']) != batchsize:
+            done = True
+
+        offset += batchsize
+
+def all_friends(fs, batchsize=500):
+    friends = []
+    for items in friend_list_generator(fs, batchsize=batchsize):
+        friends += items
+    return friends
