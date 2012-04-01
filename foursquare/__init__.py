@@ -235,7 +235,7 @@ def_method('venues_explore',
 
 def_method('venues_search',
             required=['ll'],
-            optional=['llAcc','alt','altAcc','query','limit','intent','categoryId','url','providerId','linkedId'])
+            optional=['llAcc','alt','altAcc','radius','query','limit','intent','categoryId','url','providerId','linkedId'])
 
 def_method('venues_trending',
            required=['ll'],
